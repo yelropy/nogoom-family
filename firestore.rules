@@ -17,8 +17,23 @@ service cloud.firestore {
     function currentKid(family,kid) {return kid in ['a','b'] && canViewKid(family,kid);}
     function validDay(s) {return s is string && s.matches('^\\d{4}-\\d{2}-\\d{2}$');}
     function validChecks(d) {
-      return d.checks is list && d.checks.size() <= 12 &&
-        d.checks.hasOnly([0,1,2,3,4,5,6,7,8,9,10,11]);
+      return d.checks is list && d.checks.size() <= 40 &&
+        d.checks.hasOnly([0,1,2,3,4,5,6,7,8,9,10,11,
+          't0','t1','t2','t3','t4','t5','t6','t7','t8','t9',
+          't10','t11','t12','t13','t14','t15','t16','t17','t18','t19',
+          't20','t21','t22','t23','t24','t25','t26','t27','t28','t29',
+          't30','t31','t32','t33','t34','t35','t36','t37','t38','t39']);
+    }
+    match /families/{family}/settings/{settingId} {
+      allow get: if member(family) && settingId == 'taskCatalog';
+      allow list: if false;
+      allow create, update: if isParent(family) && settingId == 'taskCatalog'
+        && request.resource.data.keys().hasOnly(['tasks','updatedBy','updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.tasks is list
+        && request.resource.data.tasks.size() >= 12
+        && request.resource.data.tasks.size() <= 40;
+      allow delete: if false;
     }
     match /families/{family}/members/{uid} {
       allow get: if member(family) && (uid == request.auth.uid || isParent(family));
@@ -27,7 +42,11 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     match /families/{family}/daily/{docId} {
-      allow get, list: if currentKid(family,resource.data.kidId);
+      // A parent may query all records; children can query only their own kidId.
+      // Security rules are not filters: unfiltered parent queries need an explicit parent branch.
+      allow get: if currentKid(family,resource.data.kidId);
+      allow list: if isParent(family) ||
+        (member(family) && me(family).role == 'child' && resource.data.kidId == me(family).kidId);
       allow create: if currentKid(family,request.resource.data.kidId)
         && docId == request.resource.data.kidId + '_' + request.resource.data.date
         && validDay(request.resource.data.date)
@@ -42,12 +61,47 @@ service cloud.firestore {
         && validChecks(request.resource.data);
       allow delete: if false;
     }
+    // One immutable weekly reminder per child per Saturday.
+    // Children can request; only parents can confirm money was paid.
+    match /families/{family}/allowances/{allowanceId} {
+      allow get: if isParent(family) || (member(family) && me(family).role == 'child' &&
+        allowanceId.matches('^' + me(family).kidId + '_[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+      allow list: if isParent(family) ||
+        (member(family) && me(family).role == 'child' && resource.data.kidId == me(family).kidId);
+      allow create: if member(family)
+        && request.resource.data.kidId in ['a','b']
+        && canViewKid(family,request.resource.data.kidId)
+        && validDay(request.resource.data.weekStart)
+        && allowanceId == request.resource.data.kidId + '_' + request.resource.data.weekStart
+        && ((me(family).role == 'child' && request.resource.data.status == 'requested'
+          && request.resource.data.keys().hasOnly(['kidId','weekStart','status','requestedBy','requestedAt'])
+          && request.resource.data.requestedBy == request.auth.uid)
+          || (isParent(family) && request.resource.data.status == 'paid'
+          && request.resource.data.keys().hasOnly(['kidId','weekStart','status','amount','paidBy','paidAt'])
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0 && request.resource.data.amount <= 100
+          && request.resource.data.paidBy == request.auth.uid));
+      allow update: if isParent(family)
+        && resource.data.status == 'requested'
+        && request.resource.data.status == 'paid'
+        && request.resource.data.kidId == resource.data.kidId
+        && request.resource.data.weekStart == resource.data.weekStart
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','amount','paidBy','paidAt'])
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0 && request.resource.data.amount <= 100
+        && request.resource.data.paidBy == request.auth.uid;
+      allow delete: if false;
+    }
     match /families/{family}/events/{eventId} {
-      allow get, list: if currentKid(family,resource.data.kidId);
+      // Parents may look up even a not-yet-created event before creating it.
+      // Children only read existing events associated with their own kidId.
+      allow get: if isParent(family) || currentKid(family,resource.data.kidId);
+      allow list: if isParent(family) ||
+        (member(family) && me(family).role == 'child' && resource.data.kidId == me(family).kidId);
       allow create: if isParent(family)
         && request.resource.data.kidId in ['a','b']
         && validDay(request.resource.data.date)
-        && request.resource.data.keys().hasOnly(['kidId','date','type','points','reason','createdBy','createdAt','active'])
+        && request.resource.data.keys().hasOnly(['kidId','date','type','points','reason','rewardKind','createdBy','createdAt','active'])
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.active == true
         && request.resource.data.reason is string
@@ -58,17 +112,26 @@ service cloud.firestore {
          || (request.resource.data.type == 'play' && request.resource.data.points == 0
              && me(family).role == 'mother'
              && eventId == 'play_' + request.resource.data.kidId + '_' + request.resource.data.date)
+         || (request.resource.data.type == 'reward' && request.resource.data.points == 0
+             && me(family).role == 'father'
+             && request.resource.data.rewardKind in ['trip','gift']
+             && eventId.matches('^reward_[ab]_\\d{4}-\\d{2}-\\d{2}_[A-Za-z0-9]+$'))
          || (request.resource.data.type == 'deduction' && request.resource.data.points in [5,10,15,20,50]
              && eventId.matches('^deduction_[ab]_\\d{4}-\\d{2}-\\d{2}_[A-Za-z0-9]+$')));
       allow update: if isParent(family)
         && (resource.data.type != 'play' || me(family).role == 'mother')
+        && (resource.data.type != 'reward' || me(family).role == 'father')
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedAt','updatedBy'])
         && request.resource.data.active is bool
         && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
     }
     match /families/{family}/signatures/{sigId} {
-      allow get, list: if currentKid(family,resource.data.kidId);
+      // A parent may query all records; children can query only their own kidId.
+      // Security rules are not filters: unfiltered parent queries need an explicit parent branch.
+      allow get: if currentKid(family,resource.data.kidId);
+      allow list: if isParent(family) ||
+        (member(family) && me(family).role == 'child' && resource.data.kidId == me(family).kidId);
       allow create: if member(family)
         && request.resource.data.kidId in ['a','b']
         && canViewKid(family,request.resource.data.kidId)
