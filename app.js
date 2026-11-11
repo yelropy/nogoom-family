@@ -1,7 +1,7 @@
 import {firebaseConfig,familyId} from './firebase-config.js';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
-import {getFirestore,doc,getDoc,setDoc,updateDoc,collection,query,where,onSnapshot,serverTimestamp} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import {getFirestore,doc,getDoc,setDoc,updateDoc,collection,query,where,onSnapshot,serverTimestamp,writeBatch,addDoc,orderBy,limit} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
 // معرف ثابت لكل مهمة: حتى لو غيّر الأهل ترتيب البنود لن تختلط علامات الماضي.
@@ -27,7 +27,7 @@ const dateParts=d=>new Date(d+'T12:00:00');
 const formatDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const explainError=e=>({"auth/invalid-credential":"البريد الإلكتروني أو كلمة المرور غير صحيحة.","auth/too-many-requests":"محاولات كثيرة، يرجى المحاولة لاحقاً.","permission-denied":"ليس لديك صلاحية لهذه العملية. تحقق من إعداد الأعضاء والقواعد.","unavailable":"تعذر الاتصال. تأكد من الإنترنت."}[e?.code]||e?.message||'حدث خطأ غير متوقع');
-let app,auth,store,person,user,selectedKid='a',selectedDate=today(),daily=[],events=[],signatures=[],members=[],allowances=[],listeners=[],tab='daily',catalogReady=false;
+let app,auth,store,person,user,selectedKid='a',selectedDate=today(),daily=[],events=[],signatures=[],members=[],allowances=[],notices=[],listeners=[],tab='daily',catalogReady=false;
 const parent=()=>person?.role==='father'||person?.role==='mother';
 const accessKid=k=>parent()||person?.kidId===k;
 const base=()=>`families/${familyId}`;
@@ -35,6 +35,7 @@ const dref=(k,d)=>doc(store,base(),'daily',`${k}_${d}`);
 const eref=id=>doc(store,base(),'events',id);
 const sref=(k,d,r)=>doc(store,base(),'signatures',`${k}_${d}_${r}`);
 const aref=(k,week)=>doc(store,base(),'allowances',`${k}_${week}`);
+const noticeCol=()=>collection(store,base(),'notifications');
 // أسبوع المصروف يبدأ يوم السبت ويظل الطلب ظاهراً حتى تأكيد الصرف.
 const weekSaturday=(day)=>{const d=dateParts(day);d.setDate(d.getDate()-(d.getDay()+1)%7);return formatDate(d)};
 const show=(id,v)=>$(id).hidden=!v;
@@ -58,10 +59,23 @@ function startListeners(){unsubscribeAll();daily=[];events=[];signatures=[];memb
   const q=name==='members'?(childFilter?doc(store,base(),'members',user.uid):col(name)):query(col(name),...kidFilter);
   const unsub=onSnapshot(q,snap=>{setter(snap.docs?snap.docs.map(x=>({id:x.id,...x.data()})):(snap.exists()?[{id:snap.id,...snap.data()}]:[]));render();$('sync').textContent='● متصل — التحديث مباشر'},err=>{$('sync').textContent='● تعذرت المزامنة';toast('خطأ في المزامنة: '+explainError(err));});listeners.push(unsub);
  }
+ if(parent()){
+  const noticeQ=query(noticeCol(),orderBy('createdAt','desc'),limit(150));
+  const nu=onSnapshot(noticeQ,snap=>{notices=snap.docs.map(x=>({id:x.id,...x.data()}));renderNotifications()},err=>{toast('تعذر تحميل الإشعارات: '+explainError(err))});
+  listeners.push(nu);
+ }
  const configUnsub=onSnapshot(catalogRef(),snap=>{catalog=snap.exists()&&Array.isArray(snap.data().tasks)?snap.data().tasks:structuredClone(DEFAULT_CATALOG);catalogReady=true;render();renderSettings()},err=>{toast('تعذر تحميل إعدادات الأنشطة: '+explainError(err))});listeners.push(configUnsub);
 }
-function render(){if(!person)return;const dailyRecord=entry(selectedKid,selectedDate);const m=monthTotals(selectedKid,selectedDate);$('todayPoints').textContent=`${points(selectedKid,selectedDate)} / ${pointsMax(selectedDate)}`;$('prayerPoints').textContent=`${prayerPoints(dailyRecord,selectedDate)} / ${catalog.filter(isPrayer).reduce((n,t)=>n+taskPoints(t,selectedDate),0)}`;$('monthMoney').textContent=`${m.money.toFixed(3)} د.ك`;$('monthDeductions').textContent=`${m.deductions} نقطة`;renderTasks(dailyRecord);renderEvents();renderSummary();renderSignatures();renderAllowance()}
-function renderTasks(e){const list=$('taskList');list.replaceChildren();catalog.filter(t=>activeAt(t,selectedDate)&&taskPoints(t,selectedDate)>0).forEach(t=>{const label=t.name,n=taskPoints(t,selectedDate),group=t.group,id=t.id;const row=document.createElement('label');row.className='task';const input=document.createElement('input');input.type='checkbox';input.checked=(e.checks||[]).some(v=>normalizeId(v)===id);input.addEventListener('change',async()=>{input.disabled=true;const checks=[...new Set((entry(selectedKid,selectedDate).checks||[]).map(normalizeId))];const next=input.checked?[...checks.filter(x=>x!==id),id]:checks.filter(x=>x!==id);try{await setDoc(dref(selectedKid,selectedDate),{kidId:selectedKid,date:selectedDate,checks:next.sort((a,b)=>Number(a.slice(1))-Number(b.slice(1))),updatedBy:user.uid,updatedAt:serverTimestamp()},{merge:true})}catch(err){toast(explainError(err));render()}});const name=document.createElement('span');name.textContent=label;const desc=document.createElement('small');desc.textContent=group;name.append(desc);const pts=document.createElement('b');pts.textContent=n+' نقطة';row.append(input,name,pts);list.append(row)})}
+function render(){if(!person)return;const dailyRecord=entry(selectedKid,selectedDate);const m=monthTotals(selectedKid,selectedDate);$('todayPoints').textContent=`${points(selectedKid,selectedDate)} / ${pointsMax(selectedDate)}`;$('prayerPoints').textContent=`${prayerPoints(dailyRecord,selectedDate)} / ${catalog.filter(isPrayer).reduce((n,t)=>n+taskPoints(t,selectedDate),0)}`;$('monthMoney').textContent=`${m.money.toFixed(3)} د.ك`;$('monthDeductions').textContent=`${m.deductions} نقطة`;renderTasks(dailyRecord);renderEvents();renderSummary();renderSignatures();renderAllowance();window.NogoomI18n?.apply()}
+function renderTasks(e){const list=$('taskList');list.replaceChildren();catalog.filter(t=>activeAt(t,selectedDate)&&taskPoints(t,selectedDate)>0).forEach(t=>{const label=t.name,n=taskPoints(t,selectedDate),group=t.group,id=t.id;const row=document.createElement('label');row.className='task appear';row.style.setProperty('--stagger',Math.min(220,list.children.length*24)+'ms');const input=document.createElement('input');input.type='checkbox';input.checked=(e.checks||[]).some(v=>normalizeId(v)===id);input.addEventListener('change',async()=>{input.disabled=true;const checked=input.checked;const checks=[...new Set((entry(selectedKid,selectedDate).checks||[]).map(normalizeId))];const next=checked?[...checks.filter(x=>x!==id),id]:checks.filter(x=>x!==id);try{
+ const sorted=next.sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
+ if(person.role==='child'){
+  const batch=writeBatch(store);
+  batch.set(dref(selectedKid,selectedDate),{kidId:selectedKid,date:selectedDate,checks:sorted,updatedBy:user.uid,updatedAt:serverTimestamp()},{merge:true});
+  batch.set(doc(noticeCol()),{kidId:selectedKid,kind:'task',actorUid:user.uid,date:selectedDate,taskId:id,taskCompleted:checked,createdAt:serverTimestamp(),seenBy:{}});
+  await batch.commit();
+ }else await setDoc(dref(selectedKid,selectedDate),{kidId:selectedKid,date:selectedDate,checks:sorted,updatedBy:user.uid,updatedAt:serverTimestamp()},{merge:true});
+ }catch(err){toast(explainError(err));render()}});const name=document.createElement('span');name.textContent=label;const desc=document.createElement('small');desc.textContent=group;name.append(desc);const pts=document.createElement('b');pts.textContent=n+' نقطة';row.append(input,name,pts);list.append(row)})}
 function eventText(e){return e.type==='bonus'?'⭐ بونص 50 نقطة':e.type==='play'?'🎮 ساعة بلايستيشن':e.type==='reward'?(e.rewardKind==='trip'?'🚌 رحلة من الأب':'🎁 هدية من الأب'):'➖ خصم '+e.points+' نقطة'}
 function renderEvents(){const key=monthKey(selectedDate);const scoped=events.filter(e=>e.kidId===selectedKid&&monthKey(e.date)===key).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));$('eventCount').textContent=scoped.length+' قرار';const wrap=$('eventsList');wrap.replaceChildren();if(!scoped.length){wrap.textContent='لا توجد خصومات أو مكافآت مسجلة في هذا الشهر.';return}scoped.forEach(e=>{const row=document.createElement('div');row.className='event'+(e.active?'':' inactive');const text=document.createElement('div');const bold=document.createElement('b');bold.textContent=eventText(e)+(e.active?'':' (ملغى)');bold.className=e.type==='deduction'?'negative':'positive';const reason=document.createElement('p');reason.textContent=e.reason;const who=document.createElement('small');who.textContent=`${e.date} — بواسطة ${whoDid(e.createdBy)}`+(e.updatedBy?` — آخر تعديل: ${whoDid(e.updatedBy)}`:'');text.append(bold,reason,who);row.append(text);if(parent()&&(e.type!=='play'||person.role==='mother')&&(e.type!=='reward'||person.role==='father')){const btn=document.createElement('button');btn.textContent=e.active?'إلغاء القرار':'إعادة التفعيل';btn.addEventListener('click',async()=>{if(!confirm('تأكيد تغيير حالة القرار؟'))return;try{await updateDoc(eref(e.id),{active:!e.active,updatedBy:user.uid,updatedAt:serverTimestamp()});toast('تم تحديث القرار')}catch(err){toast(explainError(err))}});row.append(btn)}wrap.append(row)})}
 function renderSummary(){const d=dateParts(selectedDate),dow=(d.getDay()+6)%7,start=new Date(d);start.setDate(d.getDate()-dow);const end=new Date(start);end.setDate(start.getDate()+6);$('weekRange').textContent=`من ${formatDate(start)} إلى ${formatDate(end)}`;const wb=$('weekBody');wb.replaceChildren();for(let i=0;i<7;i++){const day=new Date(start);day.setDate(start.getDate()+i);const ds=formatDate(day),e=entry(selectedKid,ds),es=dailyEvents(selectedKid,ds),sig=dailySignatures(selectedKid,ds);addRow(wb,[ds,basePoints(e,ds),prayerPoints(e,ds),bonus(es),deduct(es),points(selectedKid,ds),sig.length+'/3'])}const m=monthTotals(selectedKid,selectedDate);$('monthSummary').textContent=`الشهر ${monthKey(selectedDate)}: ${m.points} من ${m.max} نقطة — الصلاة ${m.prayer} نقطة — بونص ${m.bonus} نقطة — خصومات ${m.deductions} نقطة — المكافأة ${m.money.toFixed(3)} د.ك من سقف 10 د.ك.`;
@@ -87,7 +101,10 @@ function renderAllowance(){
 }
 $('requestAllowance').onclick=async()=>{
  if(person?.role!=='child')return;const week=weekSaturday(today());try{
-  await setDoc(aref(selectedKid,week),{kidId:selectedKid,weekStart:week,status:'requested',requestedBy:user.uid,requestedAt:serverTimestamp()});toast('تم تسجيل التذكير وسيظهر للأب والأم')
+  const batch=writeBatch(store);
+  batch.set(aref(selectedKid,week),{kidId:selectedKid,weekStart:week,status:'requested',requestedBy:user.uid,requestedAt:serverTimestamp()});
+  batch.set(doc(noticeCol()),{kidId:selectedKid,kind:'allowance',actorUid:user.uid,date:today(),weekStart:week,createdAt:serverTimestamp(),seenBy:{}});
+  await batch.commit();toast('تم تسجيل التذكير وسيظهر للأب والأم')
  }catch(err){toast('تعذر تسجيل التذكير: '+explainError(err))}
 };
 $('markAllowancePaid').onclick=async()=>{
@@ -111,7 +128,7 @@ function renderSettings(){if(!parent())return;const wrap=$('settingsTasks');if(!
 async function saveCatalog(tasks,success){if(!parent())return;try{await setDoc(catalogRef(),{tasks,updatedBy:user.uid,updatedAt:serverTimestamp()});toast(success)}catch(err){toast(explainError(err))}}
 $('addTask').onclick=async()=>{if(!parent())return;const name=$('newTaskName').value.trim(),group=$('newTaskGroup').value.trim(),p=Number($('newTaskPoints').value);if(!name||!group){toast('اكتب اسم النشاط وتصنيفه');return}if(!Number.isInteger(p)||p<1||p>100){toast('أدخل نقاطاً من 1 إلى 100');return}const ids=new Set(catalog.map(t=>t.id));let id='';for(let i=13;i<40;i++){if(!ids.has('t'+i)){id='t'+i;break}}if(!id){toast('وصلت للحد الأقصى 40 نشاطاً');return}const tasks=[...structuredClone(catalog),{id,name,group,active:true,activation:[{from:today(),active:true}],history:[{from:today(),points:p}]}];await saveCatalog(tasks,'تمت إضافة النشاط، ويظهر الآن.');$('newTaskName').value='';$('newTaskPoints').value='5'};
 
-function uiForPerson(){const canParent=parent();$('who').textContent=`${person.name||'فرد الأسرة'} — ${person.role==='father'?'الأب':person.role==='mother'?'الأم':'الطفل'}`;show('logout',true);show('app',true);show('login',false);show('parentActions',canParent);show('familySummary',canParent);show('motherCard',person.role==='mother');show('fatherRewardCard',person.role==='father');show('settingsTabButton',canParent);document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab==='daily'));document.querySelectorAll('.tabpage').forEach(t=>t.hidden=t.id!=='daily');tab='daily';if(!canParent)$('settingsTasks').replaceChildren();$('kidSelect').disabled=!canParent;selectedKid=canParent?$('kidSelect').value:(person.kidId||'a');$('kidSelect').value=selectedKid;$('dateSelect').value=selectedDate;startListeners()}
+function uiForPerson(){const canParent=parent();$('who').textContent=`${person.name||'فرد الأسرة'} — ${person.role==='father'?'الأب':person.role==='mother'?'الأم':'الطفل'}`;show('logout',true);show('app',true);show('login',false);show('parentActions',canParent);show('familySummary',canParent);show('motherCard',person.role==='mother');show('fatherRewardCard',person.role==='father');show('settingsTabButton',canParent);show('notificationsTabButton',canParent);show('notificationBell',canParent);document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab==='daily'));document.querySelectorAll('.tabpage').forEach(t=>t.hidden=t.id!=='daily');tab='daily';renderNotifications();if(!canParent)$('settingsTasks').replaceChildren();$('kidSelect').disabled=!canParent;selectedKid=canParent?$('kidSelect').value:(person.kidId||'a');$('kidSelect').value=selectedKid;$('dateSelect').value=selectedDate;startListeners()}
 $('kidSelect').onchange=e=>{selectedKid=e.target.value;render()};$('dateSelect').onchange=e=>{selectedDate=e.target.value||today();render()};
 for(const b of document.querySelectorAll('[data-tab]'))b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));document.querySelectorAll('.tabpage').forEach(s=>s.hidden=s.id!==tab)};
 $('giveBonus').onclick=()=>saveEvent('bonus');$('giveDeduction').onclick=()=>saveEvent('deduction');$('givePlay').onclick=()=>saveEvent('play');$('giveReward').onclick=()=>saveEvent('reward');
@@ -119,6 +136,45 @@ $('nightPhoneDeduct').onclick=()=>{$('deductAmount').value='10';$('deductReason'
 
 $('loginForm').onsubmit=async e=>{e.preventDefault();$('loginError').textContent='';try{await signInWithEmailAndPassword(auth,$('email').value.trim(),$('password').value)}catch(err){$('loginError').textContent=explainError(err)}};
 $('logout').onclick=async()=>{await signOut(auth)};
+$('notificationBell').onclick=()=>{if(!parent())return;document.querySelector('[data-tab="notifications"]').click()};
+$('markNoticesRead').onclick=async()=>{
+ if(!parent())return;
+ const unread=notices.filter(n=>!n.seenBy?.[user.uid]);
+ if(!unread.length)return toast('لا توجد إشعارات جديدة');
+ try{for(let i=0;i<unread.length;i+=250){const batch=writeBatch(store);unread.slice(i,i+250).forEach(n=>batch.update(doc(noticeCol(),n.id),{[`seenBy.${user.uid}`]:true}));await batch.commit()}toast('تم تحديد الإشعارات كمقروءة')}
+ catch(err){toast('تعذر تحديث الإشعارات: '+explainError(err))}
+};
+function renderNotifications(){
+ const badge=$('notificationBadge'),count=$('tabNoticeCount'),wrap=$('notificationList');if(!badge||!count||!wrap)return;
+ const unseen=parent()?notices.filter(n=>!n.seenBy?.[user.uid]).length:0;
+ badge.hidden=!unseen;badge.textContent=unseen>99?'99+':String(unseen);
+ count.textContent=unseen?`(${unseen})`:'';wrap.replaceChildren();
+ if(!parent())return;
+ if(!notices.length){const msg=document.createElement('div');msg.className='notice-empty';msg.textContent='لا توجد إشعارات حتى الآن';wrap.append(msg);return}
+ for(const n of notices){const row=document.createElement('div');row.className='event notice-item'+(!n.seenBy?.[user.uid]?' unread':'');const details=document.createElement('div');
+ const title=document.createElement('b');const kid=n.kidId==='a'?'الطفل الأول':'الطفل الثاني';const desc=n.kind==='login'?`🔑 ${kid} دخل الموقع`:n.kind==='allowance'?`💰 ${kid} طلب مصروف السبت`:`📝 ${kid} ${n.taskCompleted?'أنجز':'ألغى إنجاز'}: ${taskAt(n.taskId)?.name||'نشاط'}`;
+ title.textContent=desc;const when=document.createElement('time');when.textContent=n.createdAt?.toDate?.().toLocaleString(window.NogoomI18n?.lang()==='en'?'en-GB':'ar-KW')||'جارٍ تحديد الوقت';details.append(title,when);
+ if(n.kind==='task'){const d=document.createElement('small');d.textContent=n.date;details.append(d)}
+ row.append(details);wrap.append(row)}
+ window.NogoomI18n?.apply();
+}
+async function recordChildLogin(){
+ if(person?.role!=='child')return;
+ try{await addDoc(noticeCol(),{kidId:person.kidId,kind:'login',actorUid:user.uid,date:today(),createdAt:serverTimestamp(),seenBy:{}})}
+ catch(err){toast('تعذر تسجيل إشعار الدخول: '+explainError(err))}
+}
+
 if(!firebaseConfig.apiKey||firebaseConfig.apiKey.includes('PASTE_')||firebaseConfig.projectId==='YOUR_PROJECT_ID'||familyId==='your-private-family-id'){show('setup',true)}else{
- try{app=initializeApp(firebaseConfig);auth=getAuth(app);store=getFirestore(app);onAuthStateChanged(auth,async u=>{unsubscribeAll();user=u;person=null;if(!u){show('login',true);show('app',false);show('logout',false);$('who').textContent='غير مسجل';return}try{const snap=await getDoc(doc(store,base(),'members',u.uid));if(!snap.exists())throw Error('الحساب موجود لكن لم يتم تعيينه كعضو في الأسرة. أضف ملف العضو من Firebase Console.');person={...snap.data(),uid:u.uid};if(!['father','mother','child'].includes(person.role)||person.role==='child'&&!['a','b'].includes(person.kidId))throw Error('بيانات صلاحية العضو غير مكتملة.');uiForPerson()}catch(err){show('app',false);show('login',false);show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}})}catch(err){show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}
+ try{app=initializeApp(firebaseConfig);auth=getAuth(app);store=getFirestore(app);onAuthStateChanged(auth,async u=>{unsubscribeAll();user=u;person=null;if(!u){show('login',true);show('app',false);show('logout',false);$('who').textContent='غير مسجل';return}try{const snap=await getDoc(doc(store,base(),'members',u.uid));if(!snap.exists())throw Error('الحساب موجود لكن لم يتم تعيينه كعضو في الأسرة. أضف ملف العضو من Firebase Console.');person={...snap.data(),uid:u.uid};if(!['father','mother','child'].includes(person.role)||person.role==='child'&&!['a','b'].includes(person.kidId))throw Error('بيانات صلاحية العضو غير مكتملة.');uiForPerson();if(person.role==='child')recordChildLogin()}catch(err){show('app',false);show('login',false);show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}})}catch(err){show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}
+}
+
+// Language picker changes only presentation; records keep stable Arabic task IDs.
+const languagePicker=$('languageSelect');
+if(languagePicker){languagePicker.value=window.NogoomI18n?.lang()||'ar';languagePicker.addEventListener('change',e=>{window.NogoomI18n?.setLang(e.target.value);renderNotifications()})}
+// Animate changing metric values, but honor OS reduced-motion preference.
+if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+ for(const el of document.querySelectorAll('.metric b')){
+  const observer=new MutationObserver(()=>{el.classList.remove('value-changed');void el.offsetWidth;el.classList.add('value-changed')});
+  observer.observe(el,{childList:true,characterData:true,subtree:true});
+ }
 }
