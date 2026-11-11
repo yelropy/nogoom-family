@@ -122,6 +122,8 @@ const translations={
   "مفعّل": "Active",
   "نقطة": "point",
   "نقاط": "points",
+  "كل يوم فرصة لإنجاز جديد": "Every day, a new opportunity",
+  "رحلتنا اليومية نحو العادات الجميلة والإنجازات الصغيرة.": "Our daily journey of good habits and little wins.",
   "د.ك": "KWD",
   "اسم البند (مثلاً: مساعدة البيت)": "Task name (e.g., help at home)",
   "سبب البونص": "Reason for bonus",
