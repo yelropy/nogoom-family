@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function member(family) {
+      return signedIn() && exists(/databases/$(database)/documents/families/$(family)/members/$(request.auth.uid));
+    }
+    function me(family) {
+      return get(/databases/$(database)/documents/families/$(family)/members/$(request.auth.uid)).data;
+    }
+    function isParent(family) {
+      return member(family) && me(family).role in ['father','mother'];
+    }
+    function canViewKid(family,kid) {
+      return member(family) && (isParent(family) || (me(family).role == 'child' && me(family).kidId == kid));
+    }
+    function currentKid(family,kid) {return kid in ['a','b'] && canViewKid(family,kid);}
+    function validDay(s) {return s is string && s.matches('^\\d{4}-\\d{2}-\\d{2}$');}
+    function validChecks(d) {
+      return d.checks is list && d.checks.size() <= 12 &&
+        d.checks.hasOnly([0,1,2,3,4,5,6,7,8,9,10,11]);
+    }
+    match /families/{family}/members/{uid} {
+      allow get: if member(family) && (uid == request.auth.uid || isParent(family));
+      allow list: if isParent(family);
+      // Profiles must be created/edited by a parent in Firebase Console (Admin SDK bypasses rules).
+      allow create, update, delete: if false;
+    }
+    match /families/{family}/daily/{docId} {
+      allow get, list: if currentKid(family,resource.data.kidId);
+      allow create: if currentKid(family,request.resource.data.kidId)
+        && docId == request.resource.data.kidId + '_' + request.resource.data.date
+        && validDay(request.resource.data.date)
+        && request.resource.data.keys().hasOnly(['kidId','date','checks','updatedBy','updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && validChecks(request.resource.data);
+      allow update: if currentKid(family,resource.data.kidId)
+        && request.resource.data.kidId == resource.data.kidId
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checks','updatedBy','updatedAt'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && validChecks(request.resource.data);
+      allow delete: if false;
+    }
+    match /families/{family}/events/{eventId} {
+      allow get, list: if currentKid(family,resource.data.kidId);
+      allow create: if isParent(family)
+        && request.resource.data.kidId in ['a','b']
+        && validDay(request.resource.data.date)
+        && request.resource.data.keys().hasOnly(['kidId','date','type','points','reason','createdBy','createdAt','active'])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.active == true
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 150
+        && ((request.resource.data.type == 'bonus' && request.resource.data.points == 50
+             && eventId == 'bonus_' + request.resource.data.kidId + '_' + request.resource.data.date)
+         || (request.resource.data.type == 'play' && request.resource.data.points == 0
+             && me(family).role == 'mother'
+             && eventId == 'play_' + request.resource.data.kidId + '_' + request.resource.data.date)
+         || (request.resource.data.type == 'deduction' && request.resource.data.points in [5,10,15,20,50]
+             && eventId.matches('^deduction_[ab]_\\d{4}-\\d{2}-\\d{2}_[A-Za-z0-9]+$')));
+      allow update: if isParent(family)
+        && (resource.data.type != 'play' || me(family).role == 'mother')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedAt','updatedBy'])
+        && request.resource.data.active is bool
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    match /families/{family}/signatures/{sigId} {
+      allow get, list: if currentKid(family,resource.data.kidId);
+      allow create: if member(family)
+        && request.resource.data.kidId in ['a','b']
+        && canViewKid(family,request.resource.data.kidId)
+        && validDay(request.resource.data.date)
+        && request.resource.data.role == me(family).role
+        && (me(family).role != 'child' || me(family).kidId == request.resource.data.kidId)
+        && sigId == request.resource.data.kidId + '_' + request.resource.data.date + '_' + request.resource.data.role
+        && request.resource.data.keys().hasOnly(['kidId','date','role','image','signedBy','updatedAt'])
+        && request.resource.data.signedBy == request.auth.uid
+        && request.resource.data.image is string
+        && request.resource.data.image.size() <= 400000
+        && (request.resource.data.image == '' || request.resource.data.image.matches('^data:image/png;base64,[A-Za-z0-9+/=]+$'))
+        ;
+      allow update: if member(family)
+        && canViewKid(family,resource.data.kidId)
+        && request.resource.data.kidId == resource.data.kidId
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.role == resource.data.role
+        && resource.data.role == me(family).role
+        && (me(family).role != 'child' || me(family).kidId == resource.data.kidId)
+        && request.resource.data.keys().hasOnly(['kidId','date','role','image','signedBy','updatedAt'])
+        && request.resource.data.signedBy == request.auth.uid
+        && request.resource.data.image is string
+        && request.resource.data.image.size() <= 400000
+        && (request.resource.data.image == '' || request.resource.data.image.matches('^data:image/png;base64,[A-Za-z0-9+/=]+$')); 
+      allow delete: if false;
+    }
+  }
+}

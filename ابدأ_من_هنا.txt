@@ -1,0 +1,27 @@
+نجوم البيت — جاهز للرفع إلى GitHub Pages
+====================================
+تم ربط ملفات الموقع بمشروع Firebase: nogoom-al-beet
+ومعرّف الأسرة: nogoom-family-2026-k7p4
+لا تحتاج تعديل الأكواد.
+
+1) افتح github.com وسجل الدخول.
+2) أنشئ مستودعاً جديداً (New repository) باسم nogoom-family، واختر Public.
+3) داخل المستودع اضغط Add file ثم Upload files.
+4) فك ضغط ملف ZIP على جهازك وارفع الملفات الأربعة التالية إلى جذر المستودع:
+   index.html
+   style.css
+   app.js
+   firebase-config.js
+   ثم Commit changes.
+5) افتح Settings > Pages واختر Deploy from a branch، ثم main و/(root)، ثم Save.
+6) سيظهر رابط الموقع مثل: https://USERNAME.github.io/nogoom-family/
+7) في Firebase > Authentication > Settings > Authorized domains
+   أضف USERNAME.github.io فقط (من دون https:// أو اسم المستودع).
+8) افتح الرابط وسجل الدخول بحساب الأب. إذا ظهرت رسالة نقص الصلاحيات، راجع قواعد Firestore وUIDs وkidId.
+
+ملحوظات:
+- يجب أن تكون قواعد firestore.rules منشورة بالفعل عبر Firestore > Rules.
+- لا تضع أي كلمات مرور أو بيانات عائلية في GitHub.
+- بيانات الاتصال بمشروع Firebase الموجودة في firebase-config.js ليست كلمة مرور؛ الحماية الفعلية بقواعد Firestore وحسابات Authentication.
+- نشر GitHub Pages لا يجعل الموقع خاصاً، لكن بيانات الأسرة تظل محمية فقط إذا كانت قواعد Firestore صحيحة.
+- يمكنك قراءة README_AR.md للتفاصيل.
