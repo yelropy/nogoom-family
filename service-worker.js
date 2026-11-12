@@ -1,9 +1,9 @@
 /* نجوم البيت — Service Worker. Static UI only; NEVER cache Firebase or sensitive API responses. */
-const VERSION = 'nogoom-shell-2026-11-profile-02';
+const VERSION = 'nogoom-shell-2026-11-metallic-01';
 const CACHE = VERSION;
 const SHELL = [
   './', './index.html', './style.css', './theme.css', './i18n.js', './app.js',
-  './firebase-config.js', './manifest.webmanifest', './offline.html',
+  './firebase-config.js', './metallic.css', './metallic-theme.js', './manifest.webmanifest', './offline.html',
   './icons/icon-192.png', './icons/icon-512.png',
   './icons/icon-maskable-192.png', './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png'
@@ -29,7 +29,7 @@ self.addEventListener('fetch', event => {
   if(!url.pathname.startsWith(scope.pathname))return;
   const relative=url.pathname.slice(scope.pathname.length);
   const allowed=new Set(['','index.html','style.css','theme.css','i18n.js','app.js','firebase-config.js',
-    'manifest.webmanifest','offline.html','icons/icon-192.png','icons/icon-512.png',
+    'metallic.css','metallic-theme.js','manifest.webmanifest','offline.html','icons/icon-192.png','icons/icon-512.png',
     'icons/icon-maskable-192.png','icons/icon-maskable-512.png','icons/apple-touch-icon.png','icons/favicon-32.png']);
   if(!allowed.has(relative) && req.mode!=='navigate')return;
   if(req.mode==='navigate'){
