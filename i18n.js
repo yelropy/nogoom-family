@@ -192,7 +192,7 @@ function apply(){
 }
 function setLang(value){lang=value==='en'?'en':'ar';try{localStorage.setItem('nogoom.language',lang)}catch(_){ }apply()}
 window.NogoomI18n={apply,setLang,lang:getLang,t:tr};
-let scheduled=false;
-const observer=new MutationObserver(()=>{if(scheduled)return;scheduled=true;queueMicrotask(()=>{scheduled=false;apply()})});
-window.addEventListener('DOMContentLoaded',()=>{apply();observer.observe(document.body,{childList:true,subtree:true,characterData:true})});
+// Emergency reliability fix: do not watch every DOM mutation or trigger recursive translations.
+// app.js invokes apply() after dynamic content updates, and setLang() handles manual switching.
+window.addEventListener('DOMContentLoaded',()=>{apply();});
 })();

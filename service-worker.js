@@ -1,5 +1,9 @@
-// Temporary network-only recovery SW: prevents outdated cached UI from hiding the app.
-const VERSION='nogoom-recovery-20261112-3';
-self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
-self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const name of await caches.keys()){if(name.startsWith('nogoom-'))await caches.delete(name)}await self.clients.claim()})()));
-// Intentionally no fetch handler; website and Firebase are loaded directly from network.
+/* Temporary emergency fix: unregister old worker, clear stale site caches. */
+self.addEventListener('install', event => { event.waitUntil(self.skipWaiting()); });
+self.addEventListener('activate', event => { event.waitUntil((async () => {
+  const keys = await caches.keys();
+  await Promise.all(keys.filter(x => x.startsWith('nogoom-shell-')).map(x => caches.delete(x)));
+  await self.clients.claim();
+  await self.registration.unregister();
+})()); });
+self.addEventListener('fetch', event => { /* network only */ });
