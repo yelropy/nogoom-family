@@ -139,6 +139,19 @@ const translations={
   "تم تسجيل التذكير وسيظهر للأب والأم": "Reminder sent to parents",
   "تم تأكيد صرف المصروف ومزامنته بين الأجهزة": "Allowance marked as paid and synced"
 };
+Object.assign(translations, {
+  '👤 ملف الطفل':'👤 Child profile',
+  'يمكن للأب أو الأم تغيير الاسم والعمر وإضافة صورة شخصية تظهر لجميع أفراد الأسرة.':'Parents can edit the child’s name, age and profile photo, visible to the whole family.',
+  "اسم الطفل / Child's name":"Child’s name",
+  'العمر / Age':'Age',
+  'الصورة / Photo':'Photo',
+  'حفظ الملف الشخصي / Save profile':'Save profile',
+  'إزالة الصورة / Remove photo':'Remove photo',
+  'الصور يتم تصغيرها تلقائياً للحفاظ على سرعة التطبيق.':'Photos are automatically resized to keep the app fast.',
+  'صلاحية التعديل للأب والأم فقط. الطفل يشاهد صورته وبياناته دون تغييرها.':'Only parents can edit; children can view their profile.',
+  'يمكنك تعديل الاسم والعمر والصورة، ثم اضغط حفظ.':'Edit the name, age and photo, then press Save.',
+  'يمكنك مشاهدة الملف الشخصي؛ التعديل للأب والأم فقط.':'You can view your profile; only parents may edit.',
+});
 const originalText=new WeakMap();
 const renderedText=new WeakMap();
 const originalAttr=new WeakMap();

@@ -1,5 +1,5 @@
 /* نجوم البيت — Service Worker. Static UI only; NEVER cache Firebase or sensitive API responses. */
-const VERSION = 'nogoom-shell-2026-11-pwa-01';
+const VERSION = 'nogoom-shell-2026-11-profile-02';
 const CACHE = VERSION;
 const SHELL = [
   './', './index.html', './style.css', './theme.css', './i18n.js', './app.js',

@@ -39,7 +39,21 @@ service cloud.firestore {
       allow get: if member(family) && (uid == request.auth.uid || isParent(family));
       allow list: if isParent(family);
       // Profiles must be created/edited by a parent in Firebase Console (Admin SDK bypasses rules).
-      allow create, update, delete: if false;
+      allow create, delete: if false;
+      allow update: if isParent(family)
+        && resource.data.role == 'child'
+        && resource.data.kidId in ['a','b']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','age','avatar'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.age is int
+        && request.resource.data.age >= 1
+        && request.resource.data.age <= 20
+        && (!('avatar' in request.resource.data) ||
+           (request.resource.data.avatar is string
+           && request.resource.data.avatar.size() <= 85000
+           && (request.resource.data.avatar == '' || request.resource.data.avatar.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))));
     }
     match /families/{family}/daily/{docId} {
       // A parent may query all records; children can query only their own kidId.
@@ -124,6 +138,38 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedAt','updatedBy'])
         && request.resource.data.active is bool
         && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    // Real-time activity log for parents; child may ONLY create its own audit events.
+    match /families/{family}/notifications/{notificationId} {
+      allow get, list: if isParent(family);
+      allow create: if member(family)
+        && me(family).role == 'child'
+        && request.resource.data.keys().hasOnly(['kidId','kind','actorUid','date','taskId','taskCompleted','weekStart','createdAt','seenBy'])
+        && request.resource.data.kidId == me(family).kidId
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.kind in ['login','task','allowance']
+        && validDay(request.resource.data.date)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.seenBy == {}
+        && ((request.resource.data.kind == 'login'
+          && request.resource.data.keys().hasAll(['kidId','kind','actorUid','date','createdAt','seenBy'])
+          && !request.resource.data.keys().hasAny(['taskId','taskCompleted','weekStart']))
+        || (request.resource.data.kind == 'task'
+          && request.resource.data.keys().hasAll(['kidId','kind','actorUid','date','taskId','taskCompleted','createdAt','seenBy'])
+          && !request.resource.data.keys().hasAny(['weekStart'])
+          && request.resource.data.taskId in ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','t14','t15','t16','t17','t18','t19','t20','t21','t22','t23','t24','t25','t26','t27','t28','t29','t30','t31','t32','t33','t34','t35','t36','t37','t38','t39']
+          && request.resource.data.taskCompleted is bool)
+        || (request.resource.data.kind == 'allowance'
+          && request.resource.data.keys().hasAll(['kidId','kind','actorUid','date','weekStart','createdAt','seenBy'])
+          && !request.resource.data.keys().hasAny(['taskId','taskCompleted'])
+          && validDay(request.resource.data.weekStart)));
+      allow update: if isParent(family)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seenBy'])
+        && request.resource.data.seenBy is map
+        && resource.data.seenBy is map
+        && request.resource.data.seenBy.diff(resource.data.seenBy).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.seenBy[request.auth.uid] == true;
       allow delete: if false;
     }
     match /families/{family}/signatures/{sigId} {

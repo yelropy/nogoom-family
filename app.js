@@ -29,6 +29,9 @@ const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'
 const explainError=e=>({"auth/invalid-credential":"البريد الإلكتروني أو كلمة المرور غير صحيحة.","auth/too-many-requests":"محاولات كثيرة، يرجى المحاولة لاحقاً.","permission-denied":"ليس لديك صلاحية لهذه العملية. تحقق من إعداد الأعضاء والقواعد.","unavailable":"تعذر الاتصال. تأكد من الإنترنت."}[e?.code]||e?.message||'حدث خطأ غير متوقع');
 let app,auth,store,person,user,selectedKid='a',selectedDate=today(),daily=[],events=[],signatures=[],members=[],allowances=[],notices=[],listeners=[],tab='daily',catalogReady=false;
 const parent=()=>person?.role==='father'||person?.role==='mother';
+const childMember=k=>members.find(m=>m.role==='child'&&m.kidId===k);
+let draftPhoto=null,removePhoto=false,profileTarget=null,profileSeenKey=null;
+
 const accessKid=k=>parent()||person?.kidId===k;
 const base=()=>`families/${familyId}`;
 const dref=(k,d)=>doc(store,base(),'daily',`${k}_${d}`);
@@ -57,7 +60,7 @@ function unsubscribeAll(){listeners.forEach(u=>u());listeners=[]}
 function startListeners(){unsubscribeAll();daily=[];events=[];signatures=[];members=[];allowances=[];catalog=structuredClone(DEFAULT_CATALOG);catalogReady=false;const col=n=>collection(store,base(),n);const childFilter=person.role==='child';const kidFilter=childFilter?[where('kidId','==',person.kidId)]:[];
  for(const [name,setter] of [['daily',v=>daily=v],['events',v=>events=v],['signatures',v=>signatures=v],['allowances',v=>allowances=v],['members',v=>members=v]]){
   const q=name==='members'?(childFilter?doc(store,base(),'members',user.uid):col(name)):query(col(name),...kidFilter);
-  const unsub=onSnapshot(q,snap=>{setter(snap.docs?snap.docs.map(x=>({id:x.id,...x.data()})):(snap.exists()?[{id:snap.id,...snap.data()}]:[]));render();$('sync').textContent='● متصل — التحديث مباشر'},err=>{$('sync').textContent='● تعذرت المزامنة';toast('خطأ في المزامنة: '+explainError(err));});listeners.push(unsub);
+  const unsub=onSnapshot(q,snap=>{setter(snap.docs?snap.docs.map(x=>({id:x.id,...x.data()})):(snap.exists()?[{id:snap.id,...snap.data()}]:[]));if(name==='members'&&person?.role==='child'){const updated=members.find(m=>m.id===user.uid);if(updated){person={...updated,uid:user.uid};$('who').textContent=`${person.name} — الطفل`}}render();$('sync').textContent='● متصل — التحديث مباشر'},err=>{$('sync').textContent='● تعذرت المزامنة';toast('خطأ في المزامنة: '+explainError(err));});listeners.push(unsub);
  }
  if(parent()){
   const noticeQ=query(noticeCol(),orderBy('createdAt','desc'),limit(150));
@@ -66,7 +69,7 @@ function startListeners(){unsubscribeAll();daily=[];events=[];signatures=[];memb
  }
  const configUnsub=onSnapshot(catalogRef(),snap=>{catalog=snap.exists()&&Array.isArray(snap.data().tasks)?snap.data().tasks:structuredClone(DEFAULT_CATALOG);catalogReady=true;render();renderSettings()},err=>{toast('تعذر تحميل إعدادات الأنشطة: '+explainError(err))});listeners.push(configUnsub);
 }
-function render(){if(!person)return;const dailyRecord=entry(selectedKid,selectedDate);const m=monthTotals(selectedKid,selectedDate);$('todayPoints').textContent=`${points(selectedKid,selectedDate)} / ${pointsMax(selectedDate)}`;$('prayerPoints').textContent=`${prayerPoints(dailyRecord,selectedDate)} / ${catalog.filter(isPrayer).reduce((n,t)=>n+taskPoints(t,selectedDate),0)}`;$('monthMoney').textContent=`${m.money.toFixed(3)} د.ك`;$('monthDeductions').textContent=`${m.deductions} نقطة`;renderTasks(dailyRecord);renderEvents();renderSummary();renderSignatures();renderAllowance();window.NogoomI18n?.apply()}
+function render(){if(!person)return;renderProfiles();const dailyRecord=entry(selectedKid,selectedDate);const m=monthTotals(selectedKid,selectedDate);$('todayPoints').textContent=`${points(selectedKid,selectedDate)} / ${pointsMax(selectedDate)}`;$('prayerPoints').textContent=`${prayerPoints(dailyRecord,selectedDate)} / ${catalog.filter(isPrayer).reduce((n,t)=>n+taskPoints(t,selectedDate),0)}`;$('monthMoney').textContent=`${m.money.toFixed(3)} د.ك`;$('monthDeductions').textContent=`${m.deductions} نقطة`;renderTasks(dailyRecord);renderEvents();renderSummary();renderSignatures();renderAllowance();window.NogoomI18n?.apply()}
 function renderTasks(e){const list=$('taskList');list.replaceChildren();catalog.filter(t=>activeAt(t,selectedDate)&&taskPoints(t,selectedDate)>0).forEach(t=>{const label=t.name,n=taskPoints(t,selectedDate),group=t.group,id=t.id;const row=document.createElement('label');row.className='task appear';row.style.setProperty('--stagger',Math.min(220,list.children.length*24)+'ms');const input=document.createElement('input');input.type='checkbox';input.checked=(e.checks||[]).some(v=>normalizeId(v)===id);input.addEventListener('change',async()=>{input.disabled=true;const checked=input.checked;const checks=[...new Set((entry(selectedKid,selectedDate).checks||[]).map(normalizeId))];const next=checked?[...checks.filter(x=>x!==id),id]:checks.filter(x=>x!==id);try{
  const sorted=next.sort((a,b)=>Number(a.slice(1))-Number(b.slice(1)));
  if(person.role==='child'){
@@ -128,7 +131,7 @@ function renderSettings(){if(!parent())return;const wrap=$('settingsTasks');if(!
 async function saveCatalog(tasks,success){if(!parent())return;try{await setDoc(catalogRef(),{tasks,updatedBy:user.uid,updatedAt:serverTimestamp()});toast(success)}catch(err){toast(explainError(err))}}
 $('addTask').onclick=async()=>{if(!parent())return;const name=$('newTaskName').value.trim(),group=$('newTaskGroup').value.trim(),p=Number($('newTaskPoints').value);if(!name||!group){toast('اكتب اسم النشاط وتصنيفه');return}if(!Number.isInteger(p)||p<1||p>100){toast('أدخل نقاطاً من 1 إلى 100');return}const ids=new Set(catalog.map(t=>t.id));let id='';for(let i=13;i<40;i++){if(!ids.has('t'+i)){id='t'+i;break}}if(!id){toast('وصلت للحد الأقصى 40 نشاطاً');return}const tasks=[...structuredClone(catalog),{id,name,group,active:true,activation:[{from:today(),active:true}],history:[{from:today(),points:p}]}];await saveCatalog(tasks,'تمت إضافة النشاط، ويظهر الآن.');$('newTaskName').value='';$('newTaskPoints').value='5'};
 
-function uiForPerson(){const canParent=parent();$('who').textContent=`${person.name||'فرد الأسرة'} — ${person.role==='father'?'الأب':person.role==='mother'?'الأم':'الطفل'}`;show('logout',true);show('app',true);show('login',false);show('parentActions',canParent);show('familySummary',canParent);show('motherCard',person.role==='mother');show('fatherRewardCard',person.role==='father');show('settingsTabButton',canParent);show('notificationsTabButton',canParent);show('notificationBell',canParent);document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab==='daily'));document.querySelectorAll('.tabpage').forEach(t=>t.hidden=t.id!=='daily');tab='daily';renderNotifications();if(!canParent)$('settingsTasks').replaceChildren();$('kidSelect').disabled=!canParent;selectedKid=canParent?$('kidSelect').value:(person.kidId||'a');$('kidSelect').value=selectedKid;$('dateSelect').value=selectedDate;startListeners()}
+function uiForPerson(){const canParent=parent();$('who').textContent=`${person.name||'فرد الأسرة'} — ${person.role==='father'?'الأب':person.role==='mother'?'الأم':'الطفل'}`;show('logout',true);show('app',true);show('login',false);show('parentActions',canParent);show('familySummary',canParent);show('motherCard',person.role==='mother');show('fatherRewardCard',person.role==='father');show('settingsTabButton',canParent);show('profilesTabButton',true);show('notificationsTabButton',canParent);show('notificationBell',canParent);document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab==='daily'));document.querySelectorAll('.tabpage').forEach(t=>t.hidden=t.id!=='daily');tab='daily';renderNotifications();if(!canParent)$('settingsTasks').replaceChildren();$('kidSelect').disabled=!canParent;selectedKid=canParent?$('kidSelect').value:(person.kidId||'a');$('kidSelect').value=selectedKid;$('dateSelect').value=selectedDate;startListeners()}
 $('kidSelect').onchange=e=>{selectedKid=e.target.value;render()};$('dateSelect').onchange=e=>{selectedDate=e.target.value||today();render()};
 for(const b of document.querySelectorAll('[data-tab]'))b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));document.querySelectorAll('.tabpage').forEach(s=>s.hidden=s.id!==tab)};
 $('giveBonus').onclick=()=>saveEvent('bonus');$('giveDeduction').onclick=()=>saveEvent('deduction');$('givePlay').onclick=()=>saveEvent('play');$('giveReward').onclick=()=>saveEvent('reward');
@@ -167,6 +170,65 @@ async function recordChildLogin(){
 if(!firebaseConfig.apiKey||firebaseConfig.apiKey.includes('PASTE_')||firebaseConfig.projectId==='YOUR_PROJECT_ID'||familyId==='your-private-family-id'){show('setup',true)}else{
  try{app=initializeApp(firebaseConfig);auth=getAuth(app);store=getFirestore(app);onAuthStateChanged(auth,async u=>{unsubscribeAll();user=u;person=null;if(!u){show('login',true);show('app',false);show('logout',false);$('who').textContent='غير مسجل';return}try{const snap=await getDoc(doc(store,base(),'members',u.uid));if(!snap.exists())throw Error('الحساب موجود لكن لم يتم تعيينه كعضو في الأسرة. أضف ملف العضو من Firebase Console.');person={...snap.data(),uid:u.uid};if(!['father','mother','child'].includes(person.role)||person.role==='child'&&!['a','b'].includes(person.kidId))throw Error('بيانات صلاحية العضو غير مكتملة.');uiForPerson();if(person.role==='child')recordChildLogin()}catch(err){show('app',false);show('login',false);show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}})}catch(err){show('setup',true);$('setup').querySelector('p').textContent=explainError(err)}
 }
+
+
+// Family profiles are stored in the existing members documents, not in public web files.
+function renderProfiles(){
+  const member=childMember(selectedKid);
+  const displayName=member?.name|| (selectedKid==='a'?'الطفل الأول':'الطفل الثاني');
+  const picker=$('kidSelect');
+  for(const kid of ['a','b']){const m=childMember(kid);const option=picker.querySelector(`option[value="${kid}"]`);if(option)option.textContent=(m?.name||(kid==='a'?'الطفل الأول':'الطفل الثاني'))+(m?.age?` (${m.age})`:'');}
+  $('selectedProfileName').textContent=displayName;
+  $('selectedProfileAvatar').replaceChildren();
+  const small=member?.avatar;
+  if(small){const img=document.createElement('img');img.src=small;img.alt='';$('selectedProfileAvatar').append(img)}else $('selectedProfileAvatar').textContent=displayName.trim().charAt(0)||'★';
+  const big=$('profileAvatar'),initial=$('profileInitial');
+  const profileKey=`${selectedKid}|${member?.id||''}|${member?.name||''}|${member?.age||''}`;
+  const targetChanged=profileTarget!==selectedKid;
+  const editingText=[$('profileName'),$('profileAge')].includes(document.activeElement);
+  if(targetChanged){draftPhoto=null;removePhoto=false;profileTarget=selectedKid;$('profilePhoto').value='';}
+  if(targetChanged||(profileSeenKey!==profileKey&&!editingText&&!draftPhoto)){
+    $('profileName').value=member?.name||'';$('profileAge').value=member?.age|| (selectedKid==='a'?13:9);profileSeenKey=profileKey;
+  }
+  const isEditing=profileTarget===selectedKid && (draftPhoto||removePhoto);
+  const photo=isEditing?(removePhoto?'':draftPhoto):small;
+  big.hidden=!photo;initial.hidden=!!photo;
+  if(photo)big.src=photo;else {big.removeAttribute('src');initial.textContent=displayName.trim().charAt(0)||'★'}
+  for(const id of ['profileName','profileAge','profilePhoto','profileSave','profileRemovePhoto'])$(id).disabled=!parent()||!member;
+  $('profileInfo').textContent=parent()? (member?'يمكنك تعديل الاسم والعمر والصورة، ثم اضغط حفظ.':'لم يتم العثور على حساب الطفل في members.'):'يمكنك مشاهدة الملف الشخصي؛ التعديل للأب والأم فقط.';
+}
+async function compressProfilePhoto(file){
+  if(file.size>12*1024*1024)throw Error('حجم الصورة الأصلية كبير جداً (الحد 12MB).');
+  // The browser decodes supported image formats. JPEG output avoids Firestore Storage setup.
+  let image;
+  if('createImageBitmap' in window){image=await createImageBitmap(file)}else{
+    image=await new Promise((resolve,reject)=>{const img=new Image();const u=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(u);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(u);reject(Error('تعذر قراءة الصورة'))};img.src=u});
+  }
+  const w=image.width||image.naturalWidth,h=image.height||image.naturalHeight;
+  if(!w||!h)throw Error('صورة غير صالحة');
+  const side=Math.min(w,h),canvas=document.createElement('canvas');canvas.width=240;canvas.height=240;
+  const ctx=canvas.getContext('2d');ctx.drawImage(image,(w-side)/2,(h-side)/2,side,side,0,0,240,240);
+  if(image.close)image.close();
+  let encoded=canvas.toDataURL('image/jpeg',0.68);
+  if(encoded.length>85000)encoded=canvas.toDataURL('image/jpeg',0.44);
+  if(encoded.length>85000)throw Error('الصورة كبيرة بعد ضغطها؛ اختر صورة أخرى.');
+  return encoded;
+}
+$('profilePhoto').onchange=async e=>{
+  if(!parent())return;const file=e.target.files?.[0];if(!file)return;
+  try{draftPhoto=await compressProfilePhoto(file);removePhoto=false;profileTarget=selectedKid;renderProfiles();$('profileInfo').textContent='✓ الصورة جاهزة. اضغط حفظ الملف الشخصي.'}
+  catch(err){draftPhoto=null;e.target.value='';toast(err.message||'تعذر معالجة الصورة')}
+};
+$('profileRemovePhoto').onclick=()=>{if(!parent())return;draftPhoto=null;removePhoto=true;profileTarget=selectedKid;renderProfiles();$('profileInfo').textContent='ستتم إزالة الصورة عند الضغط على حفظ.'};
+$('profileSave').onclick=async()=>{
+  if(!parent())return;const m=childMember(selectedKid);if(!m){toast('ملف الطفل غير موجود');return}
+  const name=$('profileName').value.trim(),age=Number($('profileAge').value);
+  if(!name||name.length>60){toast('أدخل اسماً لا يتجاوز 60 حرفاً');return}
+  if(!Number.isInteger(age)||age<1||age>20){toast('أدخل عمراً صحيحاً من 1 إلى 20');return}
+  const changes={name,age};if(draftPhoto)changes.avatar=draftPhoto;else if(removePhoto)changes.avatar='';
+  try{await updateDoc(doc(store,base(),'members',m.id),changes);draftPhoto=null;removePhoto=false;profileTarget=null;$('profilePhoto').value='';toast('✓ تم حفظ ملف الطفل ومزامنته');renderProfiles()}
+  catch(err){toast('تعذر حفظ الملف: '+explainError(err))}
+};
 
 // Language picker changes only presentation; records keep stable Arabic task IDs.
 const languagePicker=$('languageSelect');
