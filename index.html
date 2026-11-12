@@ -1,15 +1,23 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#121714"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="نجوم البيت"><meta name="mobile-web-app-capable" content="yes"><meta name="description" content="نجوم البيت — متابعة الصلاة والقرآن والإنجازات والمكافآت للأسرة"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><title>نجوم البيت | لوحة الأسرة</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="metallic.css"><style>
-#loadStatus[hidden]{display:none!important}
-#setup[hidden],#login[hidden],#app[hidden]{display:none!important}
-</style></head><body>
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#121714"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="نجوم البيت"><meta name="mobile-web-app-capable" content="yes"><meta name="description" content="نجوم البيت — متابعة الصلاة والقرآن والإنجازات والمكافآت للأسرة"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"><title>نجوم البيت | لوحة الأسرة</title><link rel="stylesheet" href="style.css?v=restore-20261112-3"><link rel="stylesheet" href="theme.css?v=restore-20261112-3"><link rel="stylesheet" href="metallic.css?v=restore-20261112-3"><style id="recovery-style">#nogoom-recovery{position:relative;z-index:2147483640;display:block;visibility:visible;opacity:1;transform:none;max-width:620px;margin:24px auto;padding:25px 27px;background:#fff;color:#2b2046;border:2px solid #c6b4f3;border-radius:20px;box-shadow:0 12px 38px #4b318a20;font:16px/1.8 system-ui,Tahoma,sans-serif;direction:rtl}#nogoom-recovery h2{margin:0 0 8px;font-size:23px;color:#322257}#nogoom-recovery p{margin:4px 0 13px;color:#453958}#nogoom-recovery button{border:0;border-radius:10px;background:#7048d4;color:white;padding:10px 18px;font:inherit;cursor:pointer}#nogoom-recovery[hidden]{display:none!important}#nogoom-recovery-detail{word-break:break-word;font-size:13px;color:#794f8c;margin-top:8px}@media(max-width:700px){#nogoom-recovery{margin:15px 12px;padding:18px}}</style></head><body><section id="nogoom-recovery" role="status" aria-live="polite"><h2>✦ نجوم البيت</h2><p id="nogoom-recovery-text">جارٍ تحميل الموقع والاتصال بـ Firebase…</p><button id="nogoom-retry" type="button" style="display:none" onclick="location.reload()">إعادة المحاولة</button><div id="nogoom-recovery-detail"></div></section><script>
+(function(){
+  const box=document.getElementById('nogoom-recovery');
+  const msg=document.getElementById('nogoom-recovery-text');
+  const retry=document.getElementById('nogoom-retry');
+  const detail=document.getElementById('nogoom-recovery-detail');
+  let lastError='';let ready=false;
+  function isReady(){return ['setup','login','app'].some(id=>{const el=document.getElementById(id);return el&&!el.hidden})}
+  function check(){if(isReady()){ready=true;box.hidden=true;return true}return false}
+  function failure(err){if(ready)return;lastError=String(err||'');msg.textContent='تعذر تحميل واجهة الموقع. جرب إعادة التحميل، وإذا استمرت المشكلة أرسل صورة الرسالة هنا.';retry.style.display='inline-block';detail.textContent=lastError?'تفاصيل الخطأ: '+lastError:'لم تظهر صفحة الدخول بعد بدء التحميل.';box.hidden=false}
+  window.addEventListener('error',e=>{if(e.message)lastError=e.message},true);
+  window.addEventListener('unhandledrejection',e=>{lastError=String(e.reason?.message||e.reason||'فشل تحميل إحدى ملفات الموقع')});
+  document.addEventListener('DOMContentLoaded',()=>{
+    ['setup','login','app'].forEach(id=>{const el=document.getElementById(id);if(el)new MutationObserver(check).observe(el,{attributes:true,attributeFilter:['hidden']})});
+    check();setTimeout(()=>{if(!check())failure(lastError||'قد تكون ملفات Firebase أو app.js غير متاحة، أو يوجد خطأ JavaScript.')},8500);
+  });
+})();
+</script>
 <header><div class="shell header"><div><h1><span class="brand-icon" aria-hidden="true">✦</span><span>نجوم البيت</span></h1><p>صلاتي • قرآني • مذاكرتي • أخلاقي</p></div><div class="header-right"><button id="themeToggle" class="theme-toggle" type="button" title="تغيير المظهر / Change theme" aria-label="تغيير المظهر / Change theme" aria-pressed="false"><span id="themeIcon" aria-hidden="true">☾</span><span id="themeLabel">Dark</span></button><label class="language-picker" for="languageSelect"><span data-i18n="language">اللغة</span><select id="languageSelect" aria-label="Language"><option value="ar">العربية</option><option value="en">English</option></select></label><button id="notificationBell" class="secondary notice-bell" hidden aria-label="الإشعارات" title="الإشعارات">🔔 <span id="notificationBadge" class="notice-count" hidden>0</span></button><span id="who" class="pill">غير مسجل</span><button id="logout" class="secondary" hidden>خروج</button></div></div></header>
 <main class="shell"><div class="ambient-note" aria-hidden="true"><span></span><span></span><span></span></div>
-<section id="loadStatus" class="panel" style="max-width:650px;margin:26px auto;padding:24px;background:var(--panel,#fff);color:var(--text,#262036);border-radius:20px;box-shadow:0 12px 40px #33295516;line-height:1.9" role="status" aria-live="polite">
-<h2 style="margin:0 0 8px">جارٍ فتح نجوم البيت…</h2>
-<p id="loadMessage">يتم الاتصال بخدمة تسجيل الدخول. إذا تعذّر التحميل ستظهر لك رسالة واضحة هنا.</p>
-<button id="loadRetry" type="button" class="primary" style="display:none" onclick="window.location.reload()">إعادة المحاولة</button>
-<p style="font-size:12px;opacity:.7">إذا استمرت المشكلة، افتح الموقع في نافذة خاصة أو جرّب شبكة إنترنت أخرى.</p>
-</section>
 <section id="setup" class="panel" hidden><h2>إعداد الموقع مطلوب</h2><p>أضف بيانات مشروع Firebase داخل ملف <code>firebase-config.js</code>، ثم انشر الملفات كما هو موضح في دليل التشغيل.</p></section>
 <section id="login" class="panel login" hidden><h2>تسجيل دخول الأسرة</h2><p class="muted">الأب والأم والطفلان لكل منهم حساب خاص.</p><form id="loginForm"><label>البريد الإلكتروني<input id="email" type="email" autocomplete="username" required placeholder="name@example.com"></label><label>كلمة المرور<input id="password" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">دخول</button></form><p id="loginError" class="error"></p></section>
 <section id="app" hidden>
@@ -52,33 +60,7 @@
   <section id="notifications" class="tabpage" hidden><div class="panel"><div class="heading"><div><h2>🔔 نشاط الأطفال والإشعارات</h2><p class="muted">يظهر للأب والأم دخول الأطفال وتعديلات مهامهم وطلبات المصروف. سجل مباشر ومحفوظ في Firebase.</p></div><button id="markNoticesRead" class="primary">تحديد الكل كمقروء</button></div><div id="notificationList" class="events"></div></div></section>
   <section id="settings" class="tabpage" hidden><div class="panel"><h2>إدارة البنود والنقاط — الأب والأم فقط</h2><p class="muted">غيّر أسماء المهام وتصنيفاتها أو نقاطها، أو أوقف بنداً دون حذفه من السجل. البنود الجديدة تُضاف فوراً، وتغييرات نقاط البنود القديمة تبدأ من الغد لحماية النقاط السابقة. نقاط الصلاة ثابتة ومحمية.</p><p id="currentMax" class="pill soft"></p><div class="setting-head"><span>النشاط</span><span>التصنيف</span><span>النقاط (من الغد)</span><span>التفعيل</span><span>حفظ</span></div><div id="settingsTasks"></div></div><div class="panel"><h2>إضافة بند جديد</h2><div class="add-task"><input id="newTaskName" maxlength="75" placeholder="اسم البند (مثلاً: مساعدة البيت)"><input id="newTaskGroup" maxlength="25" value="نظام" placeholder="التصنيف"><input id="newTaskPoints" type="number" min="1" max="100" value="5" aria-label="عدد نقاط المهمة"><button id="addTask" class="primary">+ إضافة البند</button></div><p class="muted">بمجرد الحفظ، يظهر البند على أجهزة الأسرة كلها تلقائياً. تتغير قيمة 10 دنانير الشهرية بحسب إجمالي النقاط المتاحة دون تجاوز السقف.</p></div></section>
 </section><div class="site-rail"><strong>✳ NOGO0M AL-BEET</strong><span>GOOD HABITS. GREAT FUTURES.</span></div><div id="toast" role="status" aria-live="polite"></div>
-</main><script src="metallic-theme.js"></script><script src="i18n.js"></script><script type="module">
-const status=document.getElementById('loadStatus');
-const message=document.getElementById('loadMessage');
-const retry=document.getElementById('loadRetry');
-let finished=false;
-function ready(){
-  for (const id of ['setup','login','app']) {
-    const el=document.getElementById(id);
-    if (el && !el.hidden) {finished=true;status.hidden=true;status.style.display='none';return true;}
-  }
-  return false;
-}
-const observer=new MutationObserver(ready);
-for(const id of ['setup','login','app']) observer.observe(document.getElementById(id),{attributes:true,attributeFilter:['hidden']});
-const timeout=setTimeout(()=>{
-  if(!ready()) {message.textContent='تعذر إظهار صفحة الدخول. قد يكون الاتصال بخوادم Firebase محجوباً، أو يوجد خطأ في ملفات الموقع. جرّب إعادة المحاولة، وإن استمرت المشكلة أرسل صورة الخطأ.';retry.style.display='inline-flex';}
-},12000);
-try {
-  await import('./app.js');
-  ready();
-} catch(err) {
-  clearTimeout(timeout);
-  console.error('Nogoom app load failed:',err);
-  message.textContent='تعذر تحميل التطبيق: '+(err?.message||String(err))+'. تأكد أن الملفات app.js و firebase-config.js مرفوعة في GitHub.';
-  retry.style.display='inline-flex';
-}
-</script><script>
+</main><script src="metallic-theme.js?v=restore-20261112-3"></script><script src="i18n.js?v=restore-20261112-3"></script><script type="module" src="app.js?v=restore-20261112-3"></script><script>
 // تسجيل خدمة التطبيق: ملفات الواجهة فقط، بدون تخزين بيانات حسابات الأسرة.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   window.addEventListener('load', () => {

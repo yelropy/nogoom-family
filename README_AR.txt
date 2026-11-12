@@ -1,9 +1,8 @@
-إصلاح الشاشة الفارغة لموقع نجوم البيت
-
-1- افتح https://github.com/yelropy/nogoom-family
-2- Add file ثم Upload files
-3- ارفع الملفين index.html و service-worker.js فقط إلى جذر المشروع (وليس مجلدا فرعيا).
-4- اضغط Commit changes.
-5- بعد اكتمال نشر GitHub Pages افتح https://yelropy.github.io/nogoom-family/ في نافذة خاصة للتجربة.
-
-هذا الإصلاح يعرض حالة التحميل وأخطاء الاتصال بدل الشاشة الفارغة. لا يغير قواعد Firebase أو بيانات الأسرة أو الحسابات. إذا ظهرت رسالة خطأ، أرسل النص لحل السبب الأساسي.
+إصلاح الصفحة البيضاء - نجوم البيت
+1. افتح https://github.com/yelropy/nogoom-family
+2. Add file ثم Upload files
+3. ارفع index.html و service-worker.js إلى جذر المشروع واستبدل القديم
+4. Commit changes
+5. افتح https://yelropy.github.io/nogoom-family/ في نافذة خاصة.
+6. لو ظهرت رسالة خطأ انسخ نصها أو صوّرها.
+لا تغيّر Firebase ولا قواعد الأمان. هذه النسخة تعطّل كاش PWA مؤقتاً لتشخيص المشكلة.
